@@ -1,0 +1,82 @@
+name: Generar APK WiFi Estable
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - principal
+      - main
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Encontrar ZIP
+        id: zip
+        shell: bash
+        run: |
+          ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "No se encontró ningún ZIP"
+            exit 1
+          fi
+          echo "ZIP encontrado: $ZIP"
+          echo "zip=$ZIP" >> "$GITHUB_OUTPUT"
+
+      - name: Descomprimir proyecto
+        run: |
+          mkdir -p proyecto
+          unzip -o "${{ steps.zip.outputs.zip }}" -d proyecto
+
+      - name: Buscar proyecto Android
+        id: android
+        shell: bash
+        run: |
+          SETTINGS=$(find proyecto -name settings.gradle -type f | head -n 1)
+          if [ -z "$SETTINGS" ]; then
+            echo "No se encontró settings.gradle"
+            find proyecto -maxdepth 4 -type f | head -100
+            exit 1
+          fi
+
+          DIR=$(dirname "$SETTINGS")
+          echo "Proyecto Android encontrado en: $DIR"
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configurar Android
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar Android SDK
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Compilar APK
+        working-directory: ${{ steps.android.outputs.dir }}
+        run: |
+          gradle :app:assembleDebug --no-daemon
+
+      - name: Guardar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WiFi-Estable-APK
+          path: ${{ steps.android.outputs.dir }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
